@@ -1,0 +1,7 @@
+namespace: openshift-cnv
+
+resources:
+  - role.yaml
+  - rolebinding.yaml
+  - serviceaccount.yaml
+  - pod.yaml
