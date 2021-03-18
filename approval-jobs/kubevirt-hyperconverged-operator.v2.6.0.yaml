@@ -1,0 +1,61 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: installplan-approver-kubevirt-hyperconverged-v260
+  namespace: openshift-cnv
+spec:
+  template:
+    spec:
+      containers:
+        - name: installplan-approver
+          image: registry.redhat.io/openshift4/ose-cli:v4.7
+          imagePullPolicy: Always
+          env:
+            - name: SUBSCRIPTION_NAME
+              value: kubevirt-hyperconverged
+            - name: SUBSCRIPTION_VERSION
+              value: kubevirt-hyperconverged-operator.v2.6.0
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -xe
+
+              installplan=$(
+                oc get subscription $SUBSCRIPTION_NAME -o jsonpath='{.status.installPlanRef.name}'
+              )
+              installplan_version=$(
+                oc get installplan $installplan \
+                  -o jsonpath='{.spec.clusterServiceVersionNames[0]}'
+              )
+
+              if [[ $installplan_version != $SUBSCRIPTION_VERSION ]]; then
+                echo "WARNING: Active InstallPlan does not match requested version." >&2
+                echo "         Wanted: $SUBSCRIPTION_VERSION Have: $installplan_version" >&2
+                exit 1
+              fi
+
+              installplan_approved=$(
+                oc get installplan.operators.coreos.com $installplan \
+                  -o jsonpath='{.spec.approved}'
+              )
+
+              if [[ $installplan_approved == true ]]; then
+                echo "InstallPlan $installplan_name for version $SUBSCRIPTION_VERSION has already been approved."
+                exit 0
+              fi
+
+              echo APPLY PATCH HERE
+              exit 0
+
+              oc patch installplan.operators.coreos.com $installplan \
+                --type json --patch='
+                  [{
+                    "op": "replace",
+                    "path": "/spec/approved",
+                    "value": true
+                  }]'
+      dnsPolicy: ClusterFirst
+      restartPolicy: OnFailure
+      serviceAccount: installplan-approver
+      terminationGracePeriodSeconds: 30
